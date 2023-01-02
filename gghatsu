@@ -89,18 +89,26 @@ def imprimir_ventas():
     mes = int(input('Ingresa el mes a imprimir (1-12): '))
     anio = int(input('Ingresa el año a imprimir: '))
 
+    # Usa el módulo datetime para parsear la fecha ingresada y luego hacer la consulta
+    fecha_inicio = datetime.datetime(anio, mes, 1).strftime('%Y-%m-%d')
+    if mes == 12:
+        fecha_fin = datetime.datetime(anio + 1, 1, 1).strftime('%Y-%m-%d')
+    else:
+        fecha_fin = datetime.datetime(anio, mes + 1, 1).strftime('%Y-%m-%d')
+
     # Abre la conexión con la base de datos y crea un cursor
     conn = sqlite3.connect('inventario.db')
     c = conn.cursor()
 
     # Obtiene las ventas del mes y año seleccionados
-    c.execute('SELECT * FROM ventas WHERE strftime("%m", fecha) = ? AND strftime("%Y", fecha) = ?', (mes, anio))
+    c.execute(f'SELECT * FROM ventas WHERE fecha >= "{fecha_inicio}" AND fecha < "{fecha_fin}"')
     ventas = c.fetchall()
 
     # Si no hay ventas para el mes y año seleccionados, muestra un mensaje y vuelve al menú principal
     if not ventas:
         print('No hay ventas para el mes y año seleccionados.')
         menu_principal()
+
 
 
 
@@ -332,86 +340,42 @@ def vender():
 
 
 
-def imprimir_ventas():
+def ventas_totales():
     os.system('cls')
-    # Pide al usuario el mes y el año a imprimir
-    mes = int(input('Ingresa el mes a imprimir (1-12): '))
-    año = int(input('Ingresa el año a imprimir: '))
-
-    # Abre la conexión con la base de datos y crea un cursor
     conn = sqlite3.connect('inventario.db')
     c = conn.cursor()
 
+    # Pide al usuario que ingrese el mes y el año
+    mes = int(input('Ingresa el mes (en formato numérico): '))
+    anio = int(input('Ingresa el año: '))
+
     # Usa el módulo datetime para parsear la fecha ingresada y luego hacer la consulta
-    fecha_inicio = datetime.datetime(año, mes, 1).strftime('%Y-%m-%d')
+    fecha_inicio = datetime.datetime(anio, mes, 1).strftime('%Y-%m-%d')
     if mes == 12:
-        fecha_fin = datetime.datetime(año + 1, 1, 1).strftime('%Y-%m-%d')
+        fecha_fin = datetime.datetime(anio + 1, 1, 1).strftime('%Y-%m-%d')
     else:
-        fecha_fin = datetime.datetime(año, mes + 1, 1).strftime('%Y-%m-%d')
+        fecha_fin = datetime.datetime(anio, mes + 1, 1).strftime('%Y-%m-%d')
 
     c.execute(f'SELECT * FROM ventas WHERE fecha >= "{fecha_inicio}" AND fecha < "{fecha_fin}"')
     ventas = c.fetchall()
 
-    # Si no hay ventas para el mes y año seleccionados, muestra un mensaje y vuelve al menú principal
-    if not ventas:
-        print('No hay ventas para el mes y año seleccionados.')
-        menu_principal()
+    from tabulate import tabulate
 
-    # Si hay ventas, genera el PDF con las ventas del mes y año seleccionados
-    else:
-        # Crea un objeto PDF
-        pdf = fpdf.FPDF()
-        # Agrega una página
-        pdf.add_page()
-        # Establece el tamaño de la fuente
-        pdf.set_font('Arial', 'B', 16)
-        # Agrega el título "Ventas del mes y año seleccionados"
-        pdf.cell(0, 10, f'Ventas del mes y año seleccionados')
-        # Agrega una nueva línea
-        pdf.ln()
-        # Establece el tamaño de la fuente
-        pdf.set_font('Arial', '', 12)
-        # Agrega las cabeceras de la tabla
-        pdf.cell(40, 10, 'Fecha')
-        pdf.cell(40, 10, 'Cliente')
-        pdf.cell(40, 10, 'Producto')
-        pdf.cell(40, 10, 'Cantidad')
-        pdf.cell(40, 10, 'Total')
-        # Agrega una nueva línea
-        pdf.ln()
+    tabla = []
+    total_vendido = 0
+    for venta in ventas:
+        # Formatea el valor de la columna 'Total'
+        total_formateado = '${:,.0f}'.format(venta[5])
+        tabla.append([venta[1], venta[2], venta[3], venta[4], total_formateado])
+        total_vendido += venta[5]
 
-        # Recorre las ventas y agrega una fila por cada una en la tabla del PDF
-        for venta in ventas:
-             # Convierte la fecha a formato legible
-            fecha = datetime.datetime.strptime(venta[1], '%Y-%m-%d').strftime('%d/%m/%Y')
-            # Agrega las celdas con los datos de la venta
-            pdf.cell(40, 10, fecha)
-            pdf.cell(40, 10, venta[2])
-            pdf.cell(40, 10, venta[3])
-            pdf.cell(40, 10, str(venta[4]))
-            pdf.cell(40, 10, '${:,.2f}'.format(venta[5]))
-            # Agrega una nueva línea
-            pdf.ln()
+    # Agrega estas líneas para mostrar la suma total debajo de la columna 'Total'
+    total_formateado = '${:,.0f}'.format(total_vendido)
+    tabla.append(['', '', '', 'Total:', total_formateado])
+    print(tabulate(tabla, headers=['Fecha', 'Cliente', 'Producto', 'Cantidad', 'Total'], tablefmt='grid'))
 
-        # Calcula el total de las ventas y lo agrega al PDF
-        total_ventas = sum(venta[5] for venta in ventas)
-        # Establece el tamaño de la fuente
-        pdf.set_font('Arial', 'B', 12)
-        # Agrega la celda con el total
-        pdf.cell(160, 10, 'Total:', 0, 0, 'R')
-        pdf.cell(40, 10, '${:,.2f}'.format(total_ventas))
-
-        # Genera el archivo PDF
-        pdf.output('ventas.pdf', 'F')
-        # Muestra el mensaje de éxito
-        print('El archivo PDF se ha creado correctamente.')
-
-    # Si no hay ventas para el mes y año seleccionados, muestra un mensaje de error
-    else:
-        print('No hay ventas para el mes y año seleccionados.')
-
-    # Cierra la conexión con la base de datos
     conn.close()
+
 
 
 
@@ -492,5 +456,3 @@ while True:
             ver_gastos()
         elif opcion_banco == 3:
             ver_balance()
-    elif opcion == 7:
-        imprimir_ventas() # Llamamos a la nueva función aquí
