@@ -1,0 +1,496 @@
+import sqlite3
+import os
+import datetime
+from fpdf import FPDF
+
+os.system('color E')
+def crear_tablas():
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS inventario (
+            id INTEGER PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            cantidad INTEGER NOT NULL,
+            precio REAL NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ventas (
+            id INTEGER PRIMARY KEY,
+            fecha DATE NOT NULL,
+            cliente TEXT NOT NULL,
+            producto TEXT NOT NULL,
+            cantidad INTEGER NOT NULL,
+            precio REAL NOT NULL
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS gastos (
+            id INTEGER PRIMARY KEY,
+            operacion TEXT NOT NULL,
+            monto REAL NOT NULL
+        )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+crear_tablas()
+def menu_principal():
+    print('***Menu Principal***')
+    print('1. Inventario')
+    print('2. Agregar')
+    print('3. Vender')
+    print('4. Ventas Totales')
+    print('5. Eliminar')
+    print('6. Banco')
+    print('7. Imprimir')
+
+    opcion = int(input('Ingrese una opción: '))
+
+    if opcion == 1:
+        inventario()
+    elif opcion == 2:
+        agregar()
+    elif opcion == 3:
+        vender()
+    elif opcion == 4:
+        ventas_totales()
+    elif opcion == 5:
+        eliminar()
+    elif opcion == 6:
+        # Muestra el submenú de la opción 6. Banco
+        print('***Banco***')
+        print('1. Ingresar gastos')
+        print('2. Ver gastos')
+        print('3. Ver balance')
+
+        opcion_banco = int(input('Ingrese una opción: '))
+
+        if opcion_banco == 1:
+            ingresar_gastos()
+        elif opcion_banco == 2:
+            ver_gastos()
+        elif opcion_banco == 3:
+            ver_balance()
+    elif opcion == 7:
+        imprimir_ventas()
+
+    # Vuelve a mostrar el menú principal
+    menu_principal()
+   
+def imprimir_ventas():
+    os.system('cls')
+    # Pide al usuario el mes y el año a imprimir
+    mes = int(input('Ingresa el mes a imprimir (1-12): '))
+    anio = int(input('Ingresa el año a imprimir: '))
+
+    # Abre la conexión con la base de datos y crea un cursor
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Obtiene las ventas del mes y año seleccionados
+    c.execute('SELECT * FROM ventas WHERE strftime("%m", fecha) = ? AND strftime("%Y", fecha) = ?', (mes, anio))
+    ventas = c.fetchall()
+
+    # Si no hay ventas para el mes y año seleccionados, muestra un mensaje y vuelve al menú principal
+    if not ventas:
+        print('No hay ventas para el mes y año seleccionados.')
+        menu_principal()
+
+
+
+
+    # Crea una instancia de la clase FPDF
+    pdf = FPDF()
+
+    # Añade una nueva página al PDF
+    pdf.add_page()
+
+    # Establece la fuente y el tamaño del título
+    pdf.set_xy(10, 10)
+    pdf.set_font('Arial', 'B', 20)
+
+    # Añade el título al PDF
+    pdf.cell(200, 10, f'Ventas del mes {mes} del año {anio}')
+
+    # Establece la fuente y el tamaño de las celdas de la tabla
+    pdf.set_font('Arial', '', 12)
+
+    # Añade las cabeceras de la tabla al PDF
+    pdf.cell(40, 10, 'Fecha')
+    pdf.cell(40, 10, 'Cliente')
+    pdf.cell(40, 10, 'Producto')
+    pdf.cell(20, 10, 'Cantidad')
+    pdf.cell(40, 10, 'Precio')
+
+    # Añade una fila en blanco después de las cabeceras
+    pdf.ln(10)
+
+    # Recorre las ventas y añade una fila a la tabla por cada una
+    for venta in ventas:
+        pdf.cell(40, 10, venta[1])
+        pdf.cell(40, 10, venta[2])
+        pdf.cell(40, 10, venta[3])
+        pdf.cell(20, 10, str(venta[4]))
+        pdf.cell(40, 10, f'${venta[5]:,.2f}')
+        pdf.ln(10)
+
+    # Calcula el total de las ventas y lo añade a la tabla
+    c.execute('SELECT SUM(precio) FROM ventas WHERE strftime("%m", fecha) = ? AND strftime("%Y", fecha) = ?', (mes, anio))
+    total_ventas = c.fetchone()[0]
+
+    pdf.cell(160, 10, 'Total de ventas:', 0, 0, 'R')
+    pdf.cell(40, 10, f'${total_ventas:,.2f}', 0, 0, 'R')
+
+    # Cierra la conexión con la base de datos
+    conn.close()
+
+    # Pide al usuario el nombre del archivo PDF
+    nombre_archivo = input('Ingresa el nombre del archivo PDF: ')
+
+    # Guarda el archivo PDF en disco
+    pdf.output(f'{nombre_archivo}.pdf', 'F')
+
+    print('El archivo ha sido guardado correctamente.')
+
+
+
+def ver_gastos():
+    os.system('cls')
+    # Abre la conexión con la base de datos y crea un cursor
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Obtiene el listado de operaciones y montos de la base de datos
+    c.execute('SELECT * FROM gastos')
+    gastos = c.fetchall()
+
+    # Crea una tabla con tabulate para mostrar el listado de operaciones y montos
+    from tabulate import tabulate
+    tabla = []
+    for gasto in gastos:
+        monto_formateado = '${:,.0f}'.format(gasto[2])
+        tabla.append([gasto[1], monto_formateado])
+
+    # Si no hay gastos, añade una fila con el mensaje "Total de gastos: 0" a la tabla
+    if not gastos:
+        tabla.append(["Total de gastos:", "$0"])
+    else:
+        # Calcula el total de los gastos y lo añade a la tabla
+        c.execute('SELECT SUM(monto) FROM gastos')
+        total_gastos = c.fetchone()[0]
+        tabla.append(["Total de gastos:", '${:,.0f}'.format(total_gastos)])
+
+    # Imprime la tabla
+    print(tabulate(tabla, headers=['Operaciones', 'Monto'], tablefmt='grid'))
+
+    conn.close()
+
+    
+
+from tabulate import tabulate
+
+def ver_balance():
+    os.system('cls')
+    # Abre la conexión con la base de datos y crea un cursor
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Calcula el balance final sumando y restando el total de los gastos y ventas
+    c.execute('SELECT COALESCE(SUM(monto), 0) FROM gastos')
+    gastos_totales = c.fetchone()[0]
+    c.execute('SELECT COALESCE(SUM(precio), 0) FROM ventas')
+    ventas_totales = c.fetchone()[0]
+    balance = ventas_totales - gastos_totales
+
+    # Crea una tabla con tabulate para mostrar el balance final
+    tabla = [
+        ['Gastos Totales', '${:,.0f}'.format(gastos_totales)],
+        ['Ventas Totales', '${:,.0f}'.format(ventas_totales)],
+        ['BALANCE FINAL', '${:,.0f}'.format(balance)]
+    ]
+
+    # Imprime la tabla con tabulate
+    print(tabulate(tabla, headers=['Categoría', 'Monto'], tablefmt='grid'))
+
+    # Cierra la conexión con la base de datos
+    conn.close()
+
+
+
+
+def ingresar_gastos():
+    os.system('cls')
+    # Pide al usuario que ingrese una operación y un monto
+    operacion = input('Ingresa la operación: ')
+    monto = float(input('Ingresa el monto: '))
+
+    # Abre la conexión con la base de datos y crea un cursor
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Agrega el gasto a la base de datos
+    c.execute('INSERT INTO gastos (operacion, monto) VALUES (?, ?)', (operacion, monto))
+
+    # Guarda los cambios en la base de datos y cierra la conexión
+    conn.commit()
+    conn.close()
+
+
+def inventario():
+    os.system('cls')
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Obtener todos los productos, incluyendo la columna "Código"
+    c.execute('SELECT *, rowid FROM inventario')
+    productos = c.fetchall()
+
+    # Inicializar la variable total en 0como
+    total = 0
+
+    from tabulate import tabulate
+
+    tabla = []
+    for producto in productos:
+        # Dar formato al código con tres dígitos y relleno con ceros a la izquierda
+        codigo_formateado = '{:03}'.format(producto[4])
+        # Dar formato al precio con el símbolo de dólar y dos decimales
+        precio_formateado = '${:,.0f}'.format(producto[3])
+        # Agregar la información del código formateado y el precio formateado a cada fila de la tabla
+        if producto[2] == 0:
+            tabla.append([codigo_formateado, producto[1], "SIN STOCK", precio_formateado])
+        else:
+            tabla.append([codigo_formateado, producto[1], producto[2], precio_formateado])
+
+        # Acumular el total sumando el precio del producto
+        total += producto[2] * producto[3]
+
+        
+    # Dar formato al total con el símbolo de dólar y dos decimales
+    total_formateado = '${:,.0f}'.format(total)
+    # Agregar la fila con el mensaje "Total:" y el valor de la variable total_formateado
+    tabla.append(['', '', 'Total:', total_formateado])
+    
+    print(tabulate(tabla, headers=['Código', 'Producto', 'Disponible', 'Precio'], tablefmt='grid'))
+
+    conn.close()
+
+
+
+
+
+
+
+def agregar():
+    os.system('cls')
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    nombre = input('Ingresa el nombre del producto: ')
+    cantidad = int(input('Ingresa la cantidad: '))
+    precio = float(input('Ingresa el precio: '))
+
+    c.execute('SELECT * FROM inventario WHERE nombre=?', (nombre,))
+    producto = c.fetchone()
+
+    if producto:
+        c.execute('UPDATE inventario SET cantidad=cantidad+? WHERE nombre=?', (cantidad, nombre))
+    else:
+        c.execute('INSERT INTO inventario (nombre, cantidad, precio) VALUES (?, ?, ?)', (nombre, cantidad, precio))
+
+    conn.commit()
+    conn.close()
+
+def vender():
+    os.system('cls')
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    cliente = input('Ingresa el nombre del cliente: ')
+    fecha = datetime.datetime.now().strftime('%Y-%m-%d')  # Formato de fecha: año-mes-día
+    # Pedir al usuario que ingrese el código del producto en lugar del nombre
+    codigo = int(input('Ingresa el código del producto: '))
+    cantidad = int(input('Ingresa la cantidad: '))
+
+    # Filtrar por el código del producto en lugar del nombre
+    c.execute('SELECT * FROM inventario WHERE rowid=?', (codigo,))
+    producto = c.fetchone()
+    precio = producto[3]
+    total = cantidad * precio
+
+    c.execute('UPDATE inventario SET cantidad=cantidad-? WHERE rowid=?', (cantidad, codigo))
+    c.execute('INSERT INTO ventas (fecha, cliente, producto, cantidad, precio) VALUES (?, ?, ?, ?, ?)', (fecha, cliente, producto[1], cantidad, total))
+
+    conn.commit()
+    conn.close()
+
+
+
+def imprimir_ventas():
+    os.system('cls')
+    # Pide al usuario el mes y el año a imprimir
+    mes = int(input('Ingresa el mes a imprimir (1-12): '))
+    año = int(input('Ingresa el año a imprimir: '))
+
+    # Abre la conexión con la base de datos y crea un cursor
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    # Usa el módulo datetime para parsear la fecha ingresada y luego hacer la consulta
+    fecha_inicio = datetime.datetime(año, mes, 1).strftime('%Y-%m-%d')
+    if mes == 12:
+        fecha_fin = datetime.datetime(año + 1, 1, 1).strftime('%Y-%m-%d')
+    else:
+        fecha_fin = datetime.datetime(año, mes + 1, 1).strftime('%Y-%m-%d')
+
+    c.execute(f'SELECT * FROM ventas WHERE fecha >= "{fecha_inicio}" AND fecha < "{fecha_fin}"')
+    ventas = c.fetchall()
+
+    # Si no hay ventas para el mes y año seleccionados, muestra un mensaje y vuelve al menú principal
+    if not ventas:
+        print('No hay ventas para el mes y año seleccionados.')
+        menu_principal()
+
+    # Si hay ventas, genera el PDF con las ventas del mes y año seleccionados
+    else:
+        # Crea un objeto PDF
+        pdf = fpdf.FPDF()
+        # Agrega una página
+        pdf.add_page()
+        # Establece el tamaño de la fuente
+        pdf.set_font('Arial', 'B', 16)
+        # Agrega el título "Ventas del mes y año seleccionados"
+        pdf.cell(0, 10, f'Ventas del mes y año seleccionados')
+        # Agrega una nueva línea
+        pdf.ln()
+        # Establece el tamaño de la fuente
+        pdf.set_font('Arial', '', 12)
+        # Agrega las cabeceras de la tabla
+        pdf.cell(40, 10, 'Fecha')
+        pdf.cell(40, 10, 'Cliente')
+        pdf.cell(40, 10, 'Producto')
+        pdf.cell(40, 10, 'Cantidad')
+        pdf.cell(40, 10, 'Total')
+        # Agrega una nueva línea
+        pdf.ln()
+
+        # Recorre las ventas y agrega una fila por cada una en la tabla del PDF
+        for venta in ventas:
+             # Convierte la fecha a formato legible
+            fecha = datetime.datetime.strptime(venta[1], '%Y-%m-%d').strftime('%d/%m/%Y')
+            # Agrega las celdas con los datos de la venta
+            pdf.cell(40, 10, fecha)
+            pdf.cell(40, 10, venta[2])
+            pdf.cell(40, 10, venta[3])
+            pdf.cell(40, 10, str(venta[4]))
+            pdf.cell(40, 10, '${:,.2f}'.format(venta[5]))
+            # Agrega una nueva línea
+            pdf.ln()
+
+        # Calcula el total de las ventas y lo agrega al PDF
+        total_ventas = sum(venta[5] for venta in ventas)
+        # Establece el tamaño de la fuente
+        pdf.set_font('Arial', 'B', 12)
+        # Agrega la celda con el total
+        pdf.cell(160, 10, 'Total:', 0, 0, 'R')
+        pdf.cell(40, 10, '${:,.2f}'.format(total_ventas))
+
+        # Genera el archivo PDF
+        pdf.output('ventas.pdf', 'F')
+        # Muestra el mensaje de éxito
+        print('El archivo PDF se ha creado correctamente.')
+
+    # Si no hay ventas para el mes y año seleccionados, muestra un mensaje de error
+    else:
+        print('No hay ventas para el mes y año seleccionados.')
+
+    # Cierra la conexión con la base de datos
+    conn.close()
+
+
+
+
+def eliminar():
+    conn = sqlite3.connect('inventario.db')
+    c = conn.cursor()
+
+    print('Que deseas eliminar?')
+    print('1. Producto')
+    print('2. Ventas')
+    print('3. Gastos')
+
+    opcion_eliminar = int(input('Ingrese una opción: '))
+
+    if opcion_eliminar == 1:
+        codigo = input('Ingresa el código del producto: ')
+        c.execute('DELETE FROM inventario WHERE id=?', (codigo,))
+    elif opcion_eliminar == 2:
+        cliente = input('Ingresa el nombre del cliente: ')
+        # Definir una subconsulta que seleccione la cantidad vendida y el código del producto antes de eliminar la venta
+        c.execute('''
+            WITH venta AS (
+                SELECT cantidad, producto FROM ventas WHERE cliente=?
+            )
+            DELETE FROM ventas WHERE cliente=?''', (cliente, cliente))
+
+        # Obtener cantidad vendida y código del producto de la venta eliminada
+        c.execute('SELECT cantidad, producto FROM venta')
+        resultado = c.fetchone()
+
+        # Verificar si la consulta ha devuelto algún resultado
+        if resultado is not None:
+            cantidad_vendida = resultado[0]
+            codigo_producto = resultado[1]
+
+            # Actualizar cantidad disponible del producto en el inventario
+            c.execute('SELECT cantidad FROM inventario WHERE id=?', (codigo_producto,))
+            resultado = c.fetchone()
+            cantidad_disponible = resultado[0]
+            nueva_cantidad_disponible = cantidad_disponible + cantidad_vendida
+            c.execute('UPDATE inventario SET cantidad=? WHERE id=?', (nueva_cantidad_disponible, codigo_producto))
+    elif opcion_eliminar == 3:
+        gasto = input('Ingresa el nombre del gasto: ')
+        c.execute('DELETE FROM gastos WHERE operacion=?', (gasto,))
+
+    conn.commit()
+    conn.close()
+
+
+
+    
+while True:
+    opcion = menu_principal()
+
+    if opcion == 1:
+        inventario()
+    elif opcion == 2:
+        agregar()
+    elif opcion == 3:
+        vender()
+    elif opcion == 4:
+        ventas_totales()
+    elif opcion == 5:
+        eliminar()
+    elif opcion == 6:
+        # Muestra el submenú de la opción 6. Banco
+        print('***Banco***')
+        print('1. Ingresar gastos')
+        print('2. Ver gastos')
+        print('3. Ver balance')
+
+        opcion_banco = int(input('Ingrese una opción: '))
+
+        if opcion_banco == 1:
+            ingresar_gastos()
+        elif opcion_banco == 2:
+            ver_gastos()
+        elif opcion_banco == 3:
+            ver_balance()
+    elif opcion == 7:
+        imprimir_ventas() # Llamamos a la nueva función aquí
